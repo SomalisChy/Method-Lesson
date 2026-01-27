@@ -1,5 +1,5 @@
 # ************************************************************
-# Replication Lesson (Stata -> R) | Using .RData
+# Replication Lesson (Stata -> R) | Using .DTA
 # ************************************************************
 install.packages("dplyr")
 install.packages("tidyr")
@@ -22,10 +22,10 @@ ls("package:twang")
 
 
 # Set working directory (Windows path: use forward slashes or double backslashes)
-setwd("C:/Users/chy/Box/replication project_jj/data_stata")
+setwd("....")
 
 # --- Load data -------------------------------------------------
-els <- read_dta("C:/Users/chy/Box/replication project_jj/data_stata/els_02_12.dta")
+els <- read_dta(".../els_02_12.dta")
 
 
 # --- Bookmark #1: Clean and define treatment variable ----------
@@ -309,6 +309,7 @@ bal_con <- bal.table(ps_cont_fit)
 str(bal_bin, max.level = 1)
 str(bal_mn,  max.level = 1)
 str(bal_con, max.level = 1)
+
 
 
 
