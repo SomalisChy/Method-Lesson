@@ -28,25 +28,12 @@ Software & Packages
 Language: R
 Core package: twang
 
-Treatment Definition: School Security Strictness
-Component Variables
-
-CLEANING AND CODING VARIABLES
-Drop observations with missing treatment components
-Sum across items to create a security strictness index
-
-Create new variables for treatment:
-Binary treatment: Highest vs. lowest strictness
-Multinomial treatment: Quartiles
-Continuous treatment: Index score
-
-
 Modeling Strategy
 1. Selection Models (TWANG)
 Treatment Type	Model
-Binary	ps()
-Multinomial (quartiles)	mnps()
-Continuous	ps.cont()
+  Binary	ps()
+  Multinomial (quartiles)	mnps()
+  Continuous	ps.cont()
 
 Each model:
 Estimates propensity scores using boosted trees
@@ -59,13 +46,9 @@ Visualization of weights and balance statistics
 Model stopping rules based on standardized effect sizes
 
 3. Outcome Models
-
 For each outcome set:
-
 Outcome ~ Treatment
-
 Outcome ~ Treatment (PS-weighted)
-
 Outcome ~ Treatment + Controls (PS-weighted)
 
 Estimation Framework
