@@ -1,0 +1,71 @@
+
+DATA DICTIONARY
+Education Longitudinal Study (ELS: 2002–2012)
+Focus: School Security, Academic & Behavioral Outcomes
+
+--------------------------------------------------
+TREATMENT VARIABLES
+School Security Measures (Administrator-Reported)
+--------------------------------------------------
+
+BYF1CH   School-level characteristic used in treatment construction
+
+BYA38A   Control access to buildings during school hours
+BYA38B   Control access to school grounds during school hours
+BYA38C   Require students to pass through metal detectors
+BYA38D   Random metal detector checks on students
+BYA38E   Closed campus for students during lunch
+BYA38F   Random dog sniffs to check for drugs
+BYA38G   Random sweeps for contraband
+BYA38H   Require drug testing for students
+BYA38I   Require students to wear uniforms
+BYA38J   Enforce strict dress code
+BYA38K   Require clear book bags / ban book bags
+BYA38L   Require students to wear badges or picture ID
+BYA38M   Require faculty/staff to wear badges or picture ID
+BYA38N   Use security cameras to monitor school
+BYA38O   Telephone in most classrooms
+BYA38P   Emergency call button in classrooms
+
+
+--------------------------------------------------
+ACADEMIC OUTCOME VARIABLES
+--------------------------------------------------
+
+BYTXMSTD   Base-year standardized math score
+FYTXMSTD   Follow-up standardized math score
+
+
+--------------------------------------------------
+BEHAVIORAL OUTCOME VARIABLES
+--------------------------------------------------
+
+BYS24E   Number of times student received in-school suspension
+BYS24F   Number of times student suspended or put on probation
+
+
+--------------------------------------------------
+SELECTION (CONFOUNDING) VARIABLES
+--------------------------------------------------
+
+BYF09A   Amount of litter/trash around school
+BYF09B   Amount of graffiti around school
+BYF09C   Number of boarded-up buildings nearby
+BYF09D   Number of people congregating nearby
+BYF09E   Number of students loitering nearby
+BYP67    Level of crime in neighborhood
+BYP68    Perceived neighborhood safety
+
+--------------------------------------------------
+COVARIATES
+--------------------------------------------------
+
+BYSEX     Student sex composite
+BYRACE    Student race/ethnicity composite
+BYSES1    Socioeconomic status composite (v1)
+BYURBAN   School urbanicity
+BYP46     Student ever held back a grade
+BYP49     Parent believes student has a disability
+BYS67     English is student's native language
+BYFCOMP   Family composition
+
