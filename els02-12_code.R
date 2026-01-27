@@ -1,78 +1,111 @@
-# ************************************************************
-# Replication Lesson (Stata -> R) | Using .DTA
-# ************************************************************
-install.packages("dplyr")
-install.packages("tidyr")
-install.packages("haven")
-install.packages("survey")
-install.packages("twang")
-install.packages("ggplot2")
-install.packages("devtools")
-install_github("twangProject/twang")
+# ----------------------------
+# 1) Install packages (one-time)
+# ----------------------------
+install.packages("dplyr")     # tools for data cleaning (filter, mutate, select)
+install.packages("haven")     # reads Stata/SPSS/SAS files
+install.packages("survey")    # survey-weighted analysis (svyglm)
+install.packages("twang")     # propensity score weighting with boosted trees
+install.packages("ggplot2")   # plotting
 
-library(devtools)
+# If TWANG functions are missing, install the development version from GitHub
+install.packages("devtools")  
+devtools::install_github("twangProject/twang")  # installs TWANG from GitHub
+
+# ----------------------------
+# 2) Load packages (every session)
+# ----------------------------
 library(dplyr)
-library(tidyr)
 library(haven)
 library(twang)
 library(survey)
 library(ggplot2)
-packageVersion("twang")
-ls("package:twang")
 
+packageVersion("twang")       # tells you the version installed (debugging)
+ls("package:twang")           # lists available functions in twang
 
-# Set working directory (Windows path: use forward slashes or double backslashes)
-setwd("....")
+# ----------------------------
+# 3) Set working directory + load data
+# ----------------------------
+setwd("...")
+# "setwd" tells R where to look for files by default
 
-# --- Load data -------------------------------------------------
 els <- read_dta(".../els_02_12.dta")
+# read_dta loads a Stata .dta file into R as a data frame-like object
 
+# ----------------------------
+# 4) Define treatment item names (BYA38A ... BYA38P)
+# ----------------------------
+treat_vars <- paste0("BYA38", LETTERS[1:16])
+# paste0 combines text to create variable names:
+# LETTERS[1:16] = A B C ... P
+# so treat_vars becomes: BYA38A, BYA38B, ..., BYA38P
 
-# --- Bookmark #1: Clean and define treatment variable ----------
-treat_vars <- paste0("BYA38", LETTERS[1:16])  # BYA38A ... BYA38P
-
+# ----------------------------
+# 5) Keep only the variables you need
+# ----------------------------
 els <- els %>%
-  select(BYA38A, BYA38B,	BYA38C,	BYA38D,	BYA38E,	BYA38F,
-         BYA38G,	BYA38H,	BYA38I,	BYA38J,	BYA38K,	BYA38L,	
-         BYA38M,	BYA38N,	BYA38O,	BYA38P,	BYTXMSTD,	
-         BYS24E,	BYS24F,	BYF09A,	BYF09B,	BYF09C,	BYF09D,	BYF09E,	
-         BYP67,	BYP68,	BYSEX,	BYRACE,	BYSES1,	BYURBAN,	BYP46,	
-         BYP49,	BYS67,	BYFCOMP
-) %>%
-  mutate(across(all_of(treat_vars), ~ ifelse(.x %in% c(-9, -8, -7, -4), NA, .x))) %>%
-  
-# Drop rows if ANY of BYA38A-P is missing
-filter(if_all(all_of(treat_vars), ~ !is.na(.x))) %>%
-  # Create index (sum across all variables)
-  mutate(sch_strict = rowSums(across(all_of(treat_vars)), na.rm = TRUE)) %>%
-  # Quartiles (like xtile, nq(4))
-  mutate(qrt_sch_strict = ntile(sch_strict, 4)) %>%
-  # Binary highest vs lowest (as in your Stata)
+  select(
+    BYA38A, BYA38B, BYA38C, BYA38D, BYA38E, BYA38F,
+    BYA38G, BYA38H, BYA38I, BYA38J, BYA38K, BYA38L,
+    BYA38M, BYA38N, BYA38O, BYA38P,
+    BYTXMSTD, BYS24E, BYS24F,
+    BYF09A, BYF09B, BYF09C, BYF09D, BYF09E,
+    BYP67, BYP68, BYSEX, BYRACE, BYSES1, BYURBAN, BYP46,
+    BYP49, BYS67, BYFCOMP
+  )
+# select() drops everything else to make the dataset smaller and faster to work with
+
+# ----------------------------
+# 6) Clean treatment items: replace special negative codes with NA (missing)
+# ----------------------------
+els <- els %>%
+  mutate(across(all_of(treat_vars), ~ ifelse(.x %in% c(-9, -8, -7, -4), NA, .x)))
+# mutate() = create/modify variables
+# across() = apply the same rule to many columns
+# ifelse() = "if value is one of these codes, replace with NA"
+
+# ----------------------------
+# 7) Drop rows where ANY treatment component is missing
+# ----------------------------
+els <- els %>%
+  filter(if_all(all_of(treat_vars), ~ !is.na(.x)))
+# filter() keeps rows that match a condition
+# if_all() means: ALL listed columns must be non-missing
+# Result: you keep only students/schools with complete BYA38A-P
+
+# ----------------------------
+# 8) Create treatment index + quartiles + binary high-vs-low
+# ----------------------------
+els <- els %>%
+  mutate(
+    sch_strict = rowSums(across(all_of(treat_vars)), na.rm = TRUE),
+    # rowSums adds across columns *within each row* (creates a 0–13-ish index)
+
+    qrt_sch_strict = ntile(sch_strict, 4)
+    # ntile(x,4) splits the index into 4 equal-sized groups (quartiles)
+  ) %>%
   mutate(
     bi_sch_str = case_when(
-      sch_strict == 0  ~ 0,
-      sch_strict == 13 ~ 1,
-      TRUE ~ NA_real_
+      sch_strict == 0  ~ 0,   # lowest strictness group
+      sch_strict == 13 ~ 1,   # highest strictness group
+      TRUE ~ NA_real_         # everyone else becomes missing for this binary
     )
   )
 
-summary(els$sch_strict)
+summary(els$sch_strict)  # quick summary: min/median/mean/max etc.
 
-# --- Bookmark #2: Outcomes ------------------------------------
+# ----------------------------
+# 9) Outcome recodes
+# ----------------------------
 els <- els %>%
-  # Math
   mutate(BYTXMSTD = ifelse(BYTXMSTD == -8, NA, BYTXMSTD)) %>%
-  # Behavior BYS24E
   mutate(
     new_BYS24E = case_when(
       BYS24E == 1 ~ 0,
       BYS24E %in% 2:5 ~ 1,
       BYS24E %in% c(-9, -8, -7, -6, -4) ~ NA_real_,
       TRUE ~ NA_real_
-    )
-  ) %>%
-  # Behavior BYS24F
-  mutate(
+    ),
     new_BYS24F = case_when(
       BYS24F == 1 ~ 0,
       BYS24F %in% 2:5 ~ 1,
@@ -81,18 +114,23 @@ els <- els %>%
     )
   )
 
-table(els$new_BYS24E, useNA = "ifany")
+table(els$new_BYS24E, useNA = "ifany")  # frequency table, includes missing
 table(els$new_BYS24F, useNA = "ifany")
 
-# --- Bookmark #3: Selection vars ------------------------------
-byf_vars <- paste0("BYF09", LETTERS[1:5])  # BYF09A ... BYF09E
+# ----------------------------
+# 10) Selection variables cleaning (neighborhood/area conditions)
+# ----------------------------
+byf_vars <- paste0("BYF09", LETTERS[1:5])   # BYF09A ... BYF09E
 byp_vars <- c("BYP67", "BYP68")
 
 els <- els %>%
   mutate(across(all_of(byf_vars), ~ ifelse(.x %in% c(-9, -8), NA, .x))) %>%
   mutate(across(all_of(byp_vars), ~ ifelse(.x %in% c(-9, -8, -7, -6, -4, -2, -1), NA, .x)))
+# same idea: replace invalid codes with NA
 
-# --- Bookmark #4: Covariates ----------------------------------
+# ----------------------------
+# 11) Covariate recodes (race + family composition)
+# ----------------------------
 els <- els %>%
   mutate(
     new_BYRACE = case_when(
@@ -112,67 +150,38 @@ els <- els %>%
     )
   )
 
-table(els$new_BYRACE, useNA = "ifany")
-table(els$new_BYFCOMP, useNA = "ifany")
-
-# ************************************************************
-# Bookmark #5: Selection models + weight visualizations (Twang)
-# ************************************************************
-
-## convert to data.frame
-els <- els %>% as.data.frame()
-
-# Check structure
-class(els)
-
-# ---- 0) Define covariates you want in the selection models ----
-# (Selection vars: BYF09A-E, BYP67, BYP68)
-# (Covariates: BYSEX, new_BYRACE, BYSES1, BYURBAN, BYP46, BYP49, BYS67, new_BYFCOMP)
+# ----------------------------
+# 12) Define covariate list for TWANG (selection model predictors)
+# ----------------------------
 covars <- c(
-  byf_vars,            # BYF09A ... BYF09E
-  byp_vars,            # BYP67, BYP68
-  "BYSEX",
-  "new_BYRACE",
-  "BYSES1",
-  "BYURBAN",
-  "BYP46",
-  "BYP49",
-  "BYS67",
-  "new_BYFCOMP"
+  byf_vars, byp_vars,
+  "BYSEX", "new_BYRACE", "BYSES1", "BYURBAN", "BYP46", "BYP49", "BYS67", "new_BYFCOMP"
 )
 
-# Helper: quick weight distribution plot
+# ----------------------------
+# 13) Helper function: plot weight distributions
+# ----------------------------
 plot_weight_dist <- function(dat, w_col, treat_col, title_txt = "") {
   ggplot(dat, aes(x = .data[[w_col]])) +
     geom_histogram(bins = 60) +
     facet_wrap(vars(.data[[treat_col]]), scales = "free_y") +
-    labs(
-      title = title_txt,
-      x = "Weight",
-      y = "Count"
-    )
+    labs(title = title_txt, x = "Weight", y = "Count")
 }
+# This makes a reusable plot function so you don’t repeat code
 
 # ============================================================
-# 1) BINARY selection model (PS): bi_sch_str
-#    - uses els$bi_sch_str (0 vs 1), drops NA in treat + covars
+# 14) TWANG MODEL 1: Binary PS (ps) for bi_sch_str
 # ============================================================
 
 els_bin <- els %>%
   filter(!is.na(bi_sch_str)) %>%
   filter(if_all(all_of(covars), ~ !is.na(.x))) %>%
-  mutate(
-    # FORCE numeric 0/1 (not factor)
-    bi_sch_str = as.numeric(bi_sch_str)
-  ) %>%
-  filter(bi_sch_str %in% c(0, 1)) %>%     # drop anything not 0/1
-  as.data.frame()                         # TWANG requires data.frame
+  mutate(bi_sch_str = as.numeric(bi_sch_str)) %>%  # TWANG wants numeric 0/1
+  filter(bi_sch_str %in% c(0, 1)) %>%
+  as.data.frame()
+# TWANG expects a plain data.frame (not tibble), so we convert
 
-# Sanity check (must show only 0 and 1)
-table(els_bin$bi_sch_str, useNA = "ifany")
-str(els_bin$bi_sch_str)
-
-set.seed(123)
+set.seed(123)  # makes results reproducible (same weights every run)
 
 ps_bin <- twang::ps(
   formula = as.formula(paste("bi_sch_str ~", paste(covars, collapse = " + "))),
@@ -180,139 +189,86 @@ ps_bin <- twang::ps(
   n.trees = 5000,
   interaction.depth = 2,
   shrinkage = 0.01,
-  perm.test.iters = 0,
   stop.method = c("es.mean", "ks.max"),
   estimand = "ATE",
   verbose = FALSE
 )
+# twang::ps fits a boosted-tree propensity score model
+# stop.method tells TWANG how to pick the best iteration (balance criteria)
 
-# --- Get ATE weights (one set per stop.method; pick one) ---
 w_bin <- get.weights(ps_bin, stop.method = "es.mean")
 els_bin$w_bin <- as.numeric(w_bin)
 
-# --- Visualize weighting (built-in Twang plots) ---
-# Common useful plots: "boxplot" of propensity scores, "es" balance, "ks"
-plot(ps_bin, plots = 1)  # propensity score distributions
-plot(ps_bin, plots = 2)  # balance (ES) by stop methods
+plot(ps_bin, plots = 1)  # propensity score distributions by group
+plot(ps_bin, plots = 2)  # balance plots (effect size / KS)
 
-# --- Visualize weighting (custom): weight distributions by treatment ---
-print(plot_weight_dist(
-  dat = els_bin,
-  w_col = "w_bin",
-  treat_col = "bi_sch_str",
-  title_txt = "Binary PS weights by treatment group (bi_sch_str)"
+print(plot_weight_dist(els_bin, "w_bin", "bi_sch_str",
+  "Binary PS weights by treatment group (bi_sch_str)"
 ))
 
-# (Optional) Visualize propensity score distribution by group
-els_bin$ps_hat <- ps_bin$ps$es.mean  # uses es.mean stop method fitted ps
-ggplot(els_bin, aes(x = ps_hat)) +
-  geom_histogram(bins = 60) +
-  facet_wrap(~ bi_sch_str, scales = "free_y") +
-  labs(title = "Propensity score distribution (binary PS)", x = "Propensity score", y = "Count")
-
 # ============================================================
-# 2) MULTINOMIAL selection model (MNPS): qrt_sch_strict (4 groups)
+# 15) TWANG MODEL 2: Multinomial PS (mnps) for quartiles
 # ============================================================
 
 els_mn <- els %>%
   filter(!is.na(qrt_sch_strict)) %>%
   filter(if_all(all_of(covars), ~ !is.na(.x))) %>%
   mutate(qrt_sch_strict = factor(qrt_sch_strict, levels = 1:4)) %>%
-  as.data.frame()                         # TWANG requires data.frame
+  as.data.frame()
 
-   set.seed(123)
+set.seed(123)
 
 mnps_q <- mnps(
-  formula        = as.formula(paste("qrt_sch_strict ~", paste(covars, collapse = " + "))),
-  data           = els_mn,
-  n.trees        = 5000,
+  formula = as.formula(paste("qrt_sch_strict ~", paste(covars, collapse = " + "))),
+  data    = els_mn,
+  n.trees = 5000,
   interaction.depth = 2,
-  shrinkage      = 0.01,
-  perm.test.iters = 0,
-  stop.method    = c("es.mean", "ks.max"),
-  estimand       = "ATE",
-  verbose        = FALSE
+  shrinkage = 0.01,
+  stop.method = c("es.mean", "ks.max"),
+  estimand = "ATE",
+  verbose = FALSE
 )
 
-# --- Get ATE weights (choose stop.method) ---
 w_mn <- get.weights(mnps_q, stop.method = "es.mean")
 els_mn$w_mn <- as.numeric(w_mn)
 
-# --- Visualize weighting (built-in Twang plots) ---
-plot(mnps_q, plots = 1)  # generalized PS distributions
-plot(mnps_q, plots = 2)  # balance (ES) plot
+plot(mnps_q, plots = 1)
+plot(mnps_q, plots = 2)
 
-# --- Visualize weighting (custom): weight distributions by quartile ---
-print(plot_weight_dist(
-  dat = els_mn,
-  w_col = "w_mn",
-  treat_col = "qrt_sch_strict",
-  title_txt = "MNPS weights by treatment group (qrt_sch_strict quartiles)"
+print(plot_weight_dist(els_mn, "w_mn", "qrt_sch_strict",
+  "MNPS weights by treatment group (quartiles)"
 ))
 
 # ============================================================
-# 3) CONTINUOUS selection model (PS.CONT): sch_strict (0–13)
+# 16) TWANG MODEL 3: Continuous treatment (ps.cont) for sch_strict
 # ============================================================
 
 els_cont <- els %>%
   filter(!is.na(sch_strict)) %>%
   filter(if_all(all_of(covars), ~ !is.na(.x))) %>%
-  as.data.frame() 
+  as.data.frame()
 
 set.seed(123)
 
 ps_cont_fit <- ps.cont(
-  formula        = as.formula(paste("sch_strict ~", paste(covars, collapse = " + "))),
-  data           = els_cont,
-  n.trees        = 5000,
+  formula = as.formula(paste("sch_strict ~", paste(covars, collapse = " + "))),
+  data    = els_cont,
+  n.trees = 5000,
   interaction.depth = 2,
-  shrinkage      = 0.01,
-  perm.test.iters = 0,
-  stop.method    = c("es.mean", "ks.max"),
-  verbose        = FALSE
+  shrinkage = 0.01,
+  stop.method = c("es.mean", "ks.max"),
+  verbose = FALSE
 )
 
-# --- Get continuous-treatment weights (choose stop.method) ---
 w_cont <- get.weights(ps_cont_fit, stop.method = "es.mean")
 els_cont$w_cont <- as.numeric(w_cont)
 
-# --- Visualize weighting (built-in Twang plots) ---
-plot(ps_cont_fit, plots = 1)  # treatment/score-related diagnostic plot(s)
-plot(ps_cont_fit, plots = 2)  # balance plot(s)
+plot(ps_cont_fit, plots = 1)
+plot(ps_cont_fit, plots = 2)
 
-# --- Visualize weighting (custom): weight distribution overall + by binned sch_strict ---
-els_cont <- els_cont %>%
-  mutate(sch_strict_bin = cut(sch_strict, breaks = quantile(sch_strict, probs = seq(0, 1, 0.25)), include.lowest = TRUE))
-
-# Overall
-ggplot(els_cont, aes(x = w_cont)) +
-  geom_histogram(bins = 60) +
-  labs(title = "Continuous PS weights (overall)", x = "Weight", y = "Count")
-
-# By binned treatment
-print(plot_weight_dist(
-  dat = els_cont,
-  w_col = "w_cont",
-  treat_col = "sch_strict_bin",
-  title_txt = "Continuous PS weights by sch_strict quartile-bins"
-))
-
-# ============================================================
-# (Optional) Export balance tables to inspect quickly
-# ============================================================
-
+# Optional: balance tables
 bal_bin <- bal.table(ps_bin)
 bal_mn  <- bal.table(mnps_q)
 bal_con <- bal.table(ps_cont_fit)
 
-# View a quick peek (these objects can be large)
-str(bal_bin, max.level = 1)
-str(bal_mn,  max.level = 1)
-str(bal_con, max.level = 1)
-
-
-
-
-
-
-
+str(bal_bin, max.level = 1)  # quick look at object structure
