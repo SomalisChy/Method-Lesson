@@ -1,4 +1,7 @@
 Propensity Score Weighting with TWANG (ELS 2002–2012)
+Software & Packages
+Language: R and Studio; [insert download link]
+Core package: twang
 
 Overview
 
@@ -23,10 +26,6 @@ Education Longitudinal Study of 2002–2012 (ELS)
 National Center for Education Statistics (NCES)
 Codebook:
 https://nces.ed.gov/datalab/onlinecodebook/session/codebook/8028f151-fc03-40e2-afe3-5677e24a2c43
-
-Software & Packages
-Language: R
-Core package: twang
 
 Modeling Strategy
 1. Selection Models (TWANG)
