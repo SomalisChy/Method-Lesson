@@ -1,6 +1,6 @@
 Propensity Score Weighting with TWANG (ELS 2002–2012)
 Software & Packages
-Language: R and Studio; [insert download link]
+Language: R and Studio; (https://posit.co/download/rstudio-desktop/)
 Core package: twang
 
 Overview
