@@ -22,10 +22,10 @@ library(ggplot2)
 
 
 # Set working directory (Windows path: use forward slashes or double backslashes)
-setwd("C:/Users/chy/Box/replication project_jj/data_stata")
+setwd("...")
 
 # --- Load data -------------------------------------------------
-els <- readRDS("C:/Users/chy/Box/replication project_jj/data_stata/els_0212.rds")
+els <- readRDS(".../els_0212.rds")
 
 
 # --- Bookmark #1: Clean and define treatment variable ----------
@@ -432,6 +432,7 @@ for (o in names(results_cont)) {
   cat("\n2) Outcome = Treatment (PSWT)\n");       print(summary(results_cont[[o]]$model_pswt))
   cat("\n3) Outcome = Treatment + Controls (PSWT)\n"); print(summary(results_cont[[o]]$model_pswt_ctrl))
 }
+
 
 
 
