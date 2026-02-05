@@ -1,0 +1,717 @@
+---
+title: "els_0212"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+date: "2026-02-04"
+---
+
+# 0.R Markdown
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r setup, include=FALSE}
+options(repos = c(CRAN = "https://cloud.r-project.org/"))
+
+if (!require("pacman")) install.packages("pacman")
+
+# Load CRAN packages
+pacman::p_load(
+  devtools,
+  dplyr,
+  tidyr,
+  haven,
+  twang,
+  survey,
+  ggplot2
+)
+
+# Install twangContinuous from GitHub if needed
+if (!require("twangContinuous")) {
+  devtools::install_github("repo/twangContinuous")  # replace with actual repo
+}
+library(twangContinuous)
+```
+
+
+# 1.Setup environment
+## 0.1 Set working directory (Windows path: use forward slashes or double backslashes)
+```{r}
+#setwd("C:/Users/chy/Box/replication project_jj/data_stata")
+```
+
+
+## 0.2 Load data 
+```{r}
+els <- readRDS("els_0212 2.rds")
+```
+
+# 1. Bookmark #1: Clean and define treatment variable 
+```{r}
+treat_vars <- paste0("BYA38", LETTERS[1:16])  # BYA38A ... BYA38P
+```
+
+## 1.1 Prepare variables
+```{r}
+els <- els %>%
+  # Create index (sum across all variables)
+  mutate(sch_strict = rowSums(across(all_of(treat_vars)), na.rm = TRUE)) %>%
+  # Quartiles (like xtile, nq(4))
+  mutate(qrt_sch_strict = ntile(sch_strict, 4))
+```
+
+```{r}
+# Binary below vs above median
+med <- median(els$sch_strict, na.rm = TRUE)
+
+els <- els %>%
+  mutate(
+    bi_sch_str = case_when(
+      sch_strict <= med ~ 0,   # lower half
+      sch_strict >  med ~ 1,   # upper half
+      TRUE ~ NA_real_
+    )
+  )
+```
+
+Take a look at the sch_strict
+```{r}
+summary(els$sch_strict)
+```
+
+# 2. Bookmark #2: Outcomes 
+sch_strict will be defined later.
+
+# 3. Bookmark #3: Selection vars 
+```{r}
+byf_vars <- paste0("BYF09", LETTERS[1:5])  # BYF09A ... BYF09E
+byp_vars <- c("BYP67", "BYP68")
+```
+
+# 4. Bookmark #4: Variables that used construct weight
+mnps_q, ps_cont_fit will be defined later.
+
+# 5. Bookmark #5: Selection models + weight visualizations (Twang)
+```{r}
+## convert to data.frame
+els <- els %>% as.data.frame()
+```
+
+```{r}
+# Check structure
+class(els)
+```
+
+Define covariates you want in the selection models 
+```{r}
+# (Selection vars)
+selvars <- c("litter_sch", "graffiti", "boardup_build", "congregate",
+             "loiter", "crime", "safe_neigh")
+
+# (Covariates: BYSEX, new_BYRACE, BYSES1, BYURBAN, BYP46, BYP49, BYS67, new_BYFCOMP)
+covars <- c(
+  "sex",
+  "race",
+  "ses_comp",
+  "urban",
+  "held_back",
+  "disability",
+  "eng_native",
+  "fam_comp"
+)
+```
+
+This function creates a histogram showing the distribution of weights, with separate panels for different treatment groups. 
+```{r}
+plot_weight_dist <- function(dat, w_col, treat_col, title_txt = "") {
+  p <- ggplot(dat, aes(x = .data[[w_col]])) +
+    geom_histogram(bins = 60) +
+    facet_wrap(vars(.data[[treat_col]]), scales = "free_y") +
+    labs(title = title_txt, x = "Weight", y = "Count")
+  
+  print(p)
+  invisible(p)
+}
+```
+Here's what each line does:
+
+**Function definition**
+plot_weight_dist <- function(dat, w_col, treat_col, title_txt = "") {
+Defines a function named plot_weight_dist that takes four parameters: dat (your data), w_col (name of the weight column as a string), treat_col (name of the treatment column as a string), and an optional title_txt (defaults to an empty string).
+
+**Create the plot object**
+p <- ggplot(dat, aes(x = .data[[w_col]])) +
+Initializes a ggplot with your data and maps the weight column to the x-axis. The .data[[w_col]] syntax allows you to reference column names stored as strings (useful for flexible function arguments).
+
+**Add histogram layer**
+geom_histogram(bins = 60) +
+Draws a histogram with 60 bins to show the frequency distribution of weights.
+
+**Create separate panels**
+facet_wrap(vars(.data[[treat_col]]), scales = "free_y") +
+Splits the histogram into separate subplots for each treatment group. The scales = "free_y" lets each panel have its own y-axis range (useful when treatment groups have different sample sizes).
+
+**Add labels**
+labs(title = title_txt, x = "Weight", y = "Count")
+Sets the plot title, x-axis label ("Weight"), and y-axis label ("Count").
+
+**Display and return**
+print(p) shows the plot in your console, while invisible(p) returns it invisibly so you can assign it to a variable without printing it twice. The closing } ends the function.
+
+
+This is a simplified version of the previous function. Here's what changed:
+```{r}
+# Helper: quick weight distribution plot
+plot_weight_dist <- function(dat, w_col, treat_col, title_txt = "") {
+  ggplot(dat, aes(x = .data[[w_col]])) +
+    geom_histogram(bins = 60) +
+    facet_wrap(vars(.data[[treat_col]]), scales = "free_y") +
+    labs(
+      title = title_txt,
+      x = "Weight",
+      y = "Count"
+    )
+}
+```
+Removed the intermediate variable assignment:
+Instead of p <- ggplot(...) followed by print(p) and invisible(p), the function now directly returns the ggplot object. In R, the last expression in a function is automatically returned, so you don't need explicit return() statements or intermediate variables.
+
+**Line-by-line breakdown**
+plot_weight_dist <- function(dat, w_col, treat_col, title_txt = "") {
+Same function definition as before.
+
+ggplot(dat, aes(x = .data[[w_col]])) +
+Creates the base plot with weight mapped to the x-axis.
+
+geom_histogram(bins = 60) +
+Adds the histogram layer with 60 bins.
+
+facet_wrap(vars(.data[[treat_col]]), scales = "free_y") +
+Splits into separate panels by treatment group, each with its own y-axis scale.
+labs(title = title_txt, x = "Weight", y = "Count")
+Adds labels. Note: this is formatted across multiple lines for readability, but it's still one function call.
+
+**Key difference**
+This version is more concise and follows R best practices—it returns the plot object automatically without the overhead of storing it in a variable. When you call plot_weight_dist(mydata, "weight", "treatment"), it will both display and return the plot, which you can then save or further modify if needed.
+
+## 5.1  BINARY selection model (PS): bi_sch_str
+uses els$bi_sch_str (0 vs 1), drops NA in treat + covars
+```{r}
+els_bin <- els %>%
+  filter(!is.na(bi_sch_str)) %>%
+  mutate(bi_sch_str = as.numeric(as.character(bi_sch_str))) %>%
+  filter(bi_sch_str %in% c(0,1)) %>%
+  as.data.frame()
+
+# Sanity check (must show only 0 and 1)
+table(els_bin$bi_sch_str, useNA = "ifany")
+str(els_bin$bi_sch_str)
+```
+
+
+```{r}
+set.seed(123)
+
+ps_bin <- ps(
+  formula = as.formula(paste("bi_sch_str ~", paste(selvars, collapse = " + "))),
+  data    = els_bin,
+  n.trees = 10000,
+  interaction.depth = 2,
+  shrinkage = 0.01,
+  perm.test.iters = 0,
+  stop.method = c("es.mean", "ks.max"),
+  estimand = "ATE",
+  verbose = FALSE
+)
+```
+This code uses the `ps()` function (from the `twang` package) to estimate propensity scores using gradient boosting. Here's what each line does:
+
+**Set random seed:**
+`set.seed(123)`
+Ensures reproducible results by setting the random number generator seed. Any code you run after this will produce the same "random" results each time.
+
+**Initialize propensity score estimation:**
+`ps_bin <- ps(`
+Starts the propensity score calculation and stores the result in `ps_bin`.
+
+**Treatment formula:**
+`formula = as.formula(paste("bi_sch_str ~", paste(covars, collapse = " + "))),`
+Dynamically creates a formula where `bi_sch_str` is the treatment variable, and all variables in the `covars` vector become predictors (combined with `+` signs). For example, if `covars = c("age", "income", "education")`, this creates: `bi_sch_str ~ age + income + education`.
+
+**Data:**
+`data = els_bin,`
+The dataset containing the treatment, outcome, and covariates.
+
+**Boosting parameters:**
+`n.trees = 20000,` — Maximum number of trees to grow in the boosting algorithm
+`interaction.depth = 2,` — Controls tree complexity (depth of interactions; 2 means two-way interactions)
+`shrinkage = 0.01,` — Learning rate; smaller values mean slower but often better learning
+
+**Cross-validation:**
+`perm.test.iters = 0,` — Number of permutation test iterations (0 means skip this step)
+
+**Stopping rules:**
+`stop.method = c("es.mean", "ks.max"),`
+Uses two methods to determine the optimal number of trees: `es.mean` (standardized mean difference) and `ks.max` (Kolmogorov-Smirnov statistic).
+
+**Causal estimand:**
+`estimand = "ATE",` — Estimates the Average Treatment Effect (ATE) rather than ATT (Average Treatment Effect on the Treated)
+
+**Suppress output:**
+`verbose = FALSE`
+Prevents the function from printing iteration details to the console.
+
+```{r}
+# Get ATE weights (one set per stop.method; pick one) 
+w_bin <- twang::get.weights(ps_bin, stop.method = "es.mean")
+# Make w_bin numberic variable
+els_bin$w_bin <- as.numeric(w_bin)
+```
+
+Visualize weighting 
+1. built-in Twang plots
+```{r}
+# Common useful plots: "boxplot" of propensity scores, "es" balance, "ks"
+plot(ps_bin, plots = 1)  # propensity score distributions
+plot(ps_bin, plots = 2)  # balance (ES) by stop methods
+```
+
+2.custom: weight distributions by treatment
+```{r}
+print(plot_weight_dist(
+  dat = els_bin,
+  w_col = "w_bin",
+  treat_col = "bi_sch_str",
+  title_txt = "Binary PS weights by treatment group (bi_sch_str)"
+))
+```
+
+3.(Optional) Visualize propensity score distribution by group
+```{r}
+els_bin$ps_hat <- ps_bin$ps$es.mean  # uses es.mean stop method fitted ps
+
+ggplot(els_bin, aes(x = ps_hat)) +
+  geom_histogram(bins = 60) +
+  facet_wrap(~ bi_sch_str, scales = "free_y") +
+  labs(title = "Propensity score distribution (binary PS)", x = "Propensity score", y = "Count")
+```
+
+
+## 5.2 MULTINOMIAL selection model (MNPS): qrt_sch_strict (4 groups)
+```{r}
+els_mn <- els %>%
+  filter(!is.na(qrt_sch_strict)) %>%
+  filter(if_all(all_of(covars), ~ !is.na(.x))) %>%
+  mutate(qrt_sch_strict = factor(qrt_sch_strict, levels = 1:4)) %>%
+  as.data.frame()                         # TWANG requires data.frame
+```
+
+```{r}
+set.seed(123)
+
+mnps_q <- mnps(
+  formula        = as.formula(paste("qrt_sch_strict ~", paste(selvars, collapse = " + "))),
+  data           = els_mn,
+  n.trees        = 1000,
+  interaction.depth = 2,
+  shrinkage      = 0.01,
+  perm.test.iters = 0,
+  stop.method    = c("es.mean", "ks.max"),
+  estimand       = "ATE",
+  verbose        = FALSE
+)
+```
+This code estimates propensity scores for a **multinomial treatment** (more than two treatment groups) using the `mnps()` function from the `twang` package. Here's the breakdown:
+
+**Initialize multinomial propensity score estimation:**
+`mnps_q <- mnps(`
+Starts the multinomial propensity score calculation and stores results in `mnps_q`. The key difference from `ps()` is that `mnps()` handles treatments with 3+ categories.
+
+**Treatment formula:**
+`formula = as.formula(paste("qrt_sch_strict ~", paste(covars, collapse = " + "))),`
+Creates a formula where `qrt_sch_strict` is the multinomial treatment variable (likely with 4 categories, given "qrt" suggests quartiles), and all variables in `covars` are predictors combined with `+` signs.
+
+**Data:**
+`data = els_mn,`
+The dataset containing the treatment, outcome, and covariates.
+
+**Boosting parameters:**
+`n.trees = 5000,` — Maximum number of trees (fewer than the binary case, likely because multinomial is more computationally intensive)
+`interaction.depth = 2,` — Tree depth allowing two-way interactions
+`shrinkage = 0.01,` — Learning rate; controls step size in boosting
+
+**Cross-validation:**
+`perm.test.iters = 0,` — Skips permutation testing
+
+**Stopping rules:**
+`stop.method = c("es.mean", "ks.max"),`
+Uses two criteria to find optimal number of trees: standardized mean difference and Kolmogorov-Smirnov statistic.
+
+**Causal estimand:**
+`estimand = "ATE",` — Estimates Average Treatment Effect across all treatment group comparisons
+
+**Suppress output:**
+`verbose = FALSE`
+Prevents iteration details from printing.
+
+The main difference from the binary `ps()` example is that `mnps()` estimates propensity scores for each treatment group relative to the others, handling the multiway comparisons automatically.
+
+
+```{r}
+# Get ATE weights (choose stop.method)
+w_mn <- twang::get.weights(mnps_q, stop.method = "es.mean")
+els_mn$w_mn <- as.numeric(w_mn)
+```
+
+Visualize weighting 
+1.built-in Twang plots
+```{r}
+plot(mnps_q, plots = 1)  # generalized PS distributions
+plot(mnps_q, plots = 2)  # balance (ES) plot
+```
+
+2. custom: weight distributions by quartile 
+```{r}
+print(plot_weight_dist(
+  dat = els_mn,
+  w_col = "w_mn",
+  treat_col = "qrt_sch_strict",
+  title_txt = "MNPS weights by treatment group (qrt_sch_strict quartiles)"
+))
+```
+
+## 5.3 CONTINUOUS selection model (PS.CONT): sch_strict (0–13)
+```{r}
+model_vars <- c("sch_strict", selvars, covars, "math_score", "insch_sus", "times_sus")
+
+els_cont <- els %>%
+  select(all_of(model_vars)) %>%
+  filter(complete.cases(.)) %>%
+  as.data.frame()
+```
+
+
+```{r}
+set.seed(123)
+
+ps_cont_fit <- ps.cont(
+  formula        = as.formula(paste("sch_strict ~", paste(selvars, collapse = " + "))),
+  data           = els_cont,
+  n.trees        = 5000,
+  interaction.depth = 2,
+  shrinkage      = 0.01,
+  perm.test.iters = 0,
+  stop.method    = c("es.mean", "ks.max"),
+  verbose        = FALSE
+)
+```
+This code estimates propensity scores for a **continuous treatment** using the `ps.cont()` function from the `twang` package. Here's what each parameter does:
+
+**Initialize continuous propensity score estimation:**
+`ps_cont_fit <- ps.cont(`
+Starts the continuous propensity score calculation and stores results in `ps_cont_fit`. Unlike `ps()` (binary) and `mnps()` (multinomial), `ps.cont()` handles treatments that are measured on a continuous scale.
+
+**Treatment formula:**
+`formula = as.formula(paste("sch_strict ~", paste(covars, collapse = " + "))),`
+Creates a formula where `sch_strict` is the continuous treatment variable (e.g., a severity score or index), and all variables in `covars` are predictors combined with `+` signs.
+
+**Data:**
+`data = els_cont,`
+The dataset containing the continuous treatment, outcome, and covariates.
+
+**Boosting parameters:**
+`n.trees = 5000,` — Maximum number of trees to grow
+`interaction.depth = 2,` — Tree depth allowing two-way interactions
+`shrinkage = 0.01,` — Learning rate controlling the step size in boosting
+
+**Cross-validation:**
+`perm.test.iters = 0,` — Skips permutation testing
+
+**Stopping rules:**
+`stop.method = c("es.mean", "ks.max"),`
+Uses two criteria to determine optimal trees: standardized mean difference and Kolmogorov-Smirnov statistic (measuring covariate balance).
+
+**Suppress output:**
+`verbose = FALSE`
+Prevents iteration details from printing to the console.
+
+**Key difference from binary/multinomial:** `ps.cont()` models the continuous treatment as an outcome rather than estimating probabilities of group membership, making it suitable for dose-response or continuous exposure analyses.
+
+
+```{r}
+#Get continuous-treatment weights (choose stop.method)
+w_cont <- ps_cont_fit$w
+
+els_cont$w_cont <- as.numeric(w_cont)
+```
+
+
+Visualize weighting 
+1.custom: weight distribution overall + by binned sch_strict
+```{r}
+els_cont <- els_cont %>%
+  mutate(
+    sch_strict_bin = factor(
+      ntile(sch_strict, 4),
+      labels = c("Q1 (Low)", "Q2", "Q3", "Q4 (High)")
+    )
+  )
+```
+
+2. Overall weight distribution
+```{r}
+ggplot(els_cont, aes(x = w_cont)) +
+  geom_histogram(bins = 60) +
+  labs(
+    title = "Continuous PS weights (overall)",
+    x = "Weight",
+    y = "Count"
+  )
+```
+
+3. By binned treatment
+```{r}
+plot_weight_dist(
+  dat        = els_cont,
+  w_col      = "w_cont",
+  treat_col  = "sch_strict_bin",
+  title_txt  = "Continuous PS weights by sch_strict quartile"
+)
+```
+
+# 6. Bookmark #6: Outcome models for EACH outcome
+**Structure per outcome**
+1) Outcome = Treatment
+2) Outcome = Treatment + Controls
+3) Outcome = Treatment (PSWT)
+4) Outcome = Treatment + Controls (PSWT)
+
+```{r}
+# Outcomes to run (continuous vs binary)
+outcomes <- list(
+  math_score = "continuous",
+  insch_sus = "binary",
+  times_sus = "binary"
+)
+```
+
+Controls to use in weighted + controls models
+```{r}
+# (re-uses the same covars vector you defined above)
+controls <- covars
+```
+
+
+Helper: fit the 4-model set for one outcome/treatment/weights
+```{r}
+fit_outcome_set <- function(dat, outcome, outcome_type, treat, w_col, controls) {
+  
+  # Keep complete cases needed for the 4 models
+  keep_vars <- unique(c(outcome, treat, w_col, controls))
+  d <- dat %>%
+    dplyr::select(dplyr::all_of(keep_vars)) %>%
+    dplyr::filter(!is.na(.data[[outcome]]), !is.na(.data[[treat]])) %>%
+    dplyr::filter(dplyr::if_all(dplyr::all_of(controls), ~ !is.na(.x))) %>%
+    as.data.frame()
+  
+  f1 <- as.formula(paste(outcome, "~", treat))
+  f3 <- as.formula(paste(outcome, "~", treat, "+", paste(controls, collapse = " + ")))
+  
+  if (outcome_type == "continuous") {
+    m1 <- lm(f1, data = d)
+    m2 <- lm(f3, data = d)
+    m3 <- lm(f1, data = d, weights = d[[w_col]])
+    m4 <- lm(f3, data = d, weights = d[[w_col]])
+  } else if (outcome_type == "binary") {
+    # expects outcome coded 0/1
+    m1 <- glm(f1, data = d, family = binomial())
+    m2 <- glm(f3, data = d, family = binomial())
+    m3 <- glm(f1, data = d, family = binomial(), weights = d[[w_col]])
+    m4 <- glm(f3, data = d, family = binomial(), weights = d[[w_col]])
+  } else {
+    stop("Unknown outcome_type: ", outcome_type)
+  }
+  
+  list(
+    N = nrow(d),
+    model_unweighted = m1,
+    model_col_unweighted = m2,
+    model_pswt       = m3,
+    model_pswt_ctrl  = m4
+  )
+}
+```
+This function fits three outcome models comparing different estimation approaches. Here's what each section does:
+
+**Function definition:**
+`fit_outcome_set <- function(dat, outcome, outcome_type, treat, w_col, controls) {`
+Takes a dataset, outcome variable name, outcome type (continuous or binary), treatment variable name, weights column name, and control variables.
+
+**Prepare data:**
+`keep_vars <- unique(c(outcome, treat, w_col, controls))`
+Creates a list of all variables needed for analysis (avoiding duplicates with `unique()`).
+
+`d <- dat %>% dplyr::select(dplyr::all_of(keep_vars)) %>%`
+Selects only the necessary variables from the dataset.
+
+`dplyr::filter(!is.na(.data[[outcome]]), !is.na(.data[[treat]])) %>%`
+Removes rows with missing outcome or treatment values.
+
+`dplyr::filter(dplyr::if_all(dplyr::all_of(controls), ~ !is.na(.x))) %>%`
+Removes rows with missing values in any control variable.
+
+`as.data.frame()`
+Converts the cleaned data to a standard data frame.
+
+**Create formulas:**
+`f1 <- as.formula(paste(outcome, "~", treat))`
+Creates a simple formula with just treatment: `outcome ~ treatment`
+
+`f3 <- as.formula(paste(outcome, "~", treat, "+", paste(controls, collapse = " + ")))`
+Creates a full formula with treatment and controls: `outcome ~ treatment + control1 + control2 + ...`
+
+**Fit continuous outcome models:**
+`if (outcome_type == "continuous") {`
+Checks if outcome is continuous.
+
+`m1 <- lm(f1, data = d)` — Unweighted regression (naive estimate, no propensity score weighting)
+
+`m2 <- lm(f3, data = d)` — Unweighted regression with control variables (naive estimate, no propensity score weighting)
+
+`m3 <- lm(f1, data = d, weights = d[[w_col]])` — Weighted by propensity scores only
+
+`m4 <- lm(f3, data = d, weights = d[[w_col]])` — Weighted by propensity scores with control variables
+
+**Fit binary outcome models:**
+`} else if (outcome_type == "binary") {`
+Checks if outcome is binary.
+
+`m1 <- glm(f1, data = d, family = binomial())` — Unweighted logistic regression
+
+`m2 <- glm(f3, data = d, family = binomial())` — Unweighted logistic regression ith controls
+
+`m3 <- glm(f1, data = d, family = binomial(), weights = d[[w_col]])` — Weighted logistic regression
+
+`m4 <- glm(f3, data = d, family = binomial(), weights = d[[w_col]])` — Weighted logistic regression with controls
+
+**Error handling:**
+`} else { stop("Unknown outcome_type: ", outcome_type) }`
+Throws an error if outcome type is neither continuous nor binary.
+
+**Return results:**
+`list(N = nrow(d), model_unweighted = m1, model_pswt = m2, model_pswt_ctrl = m3)`
+Returns the sample size and three fitted models, allowing you to compare: (1) naive estimate, (2) propensity score weighted estimate, and (3) propensity score weighted estimate with additional covariate adjustment.
+
+
+
+
+## 6.1 Binary treatment outcomes
+```{r}
+results_bin <- list()
+for (o in names(outcomes)) {
+  results_bin[[o]] <- fit_outcome_set(
+    dat          = els_bin,
+    outcome      = o,
+    outcome_type = outcomes[[o]],
+    treat        = "bi_sch_str",
+    w_col        = "w_bin",
+    controls     = controls
+  )
+}
+```
+
+```{r}
+# Print summaries (Binary)
+cat("\n==============================\n")
+cat("OUTCOME MODELS: Binary Treatment (bi_sch_str)\n")
+cat("==============================\n")
+for (o in names(results_bin)) {
+  cat("\n--- Outcome:", o, "| N =", results_bin[[o]]$N, "---\n")
+  cat("\n1) Outcome = Treatment\n");              print(summary(results_bin[[o]]$model_unweighted))
+  cat("\n1) Outcome = Treatment + Controls\n");              print(summary(results_bin[[o]]$model_col_unweighted))
+  cat("\n2) Outcome = Treatment (PSWT)\n");       print(summary(results_bin[[o]]$model_pswt))
+  cat("\n3) Outcome = Treatment + Controls (PSWT)\n"); print(summary(results_bin[[o]]$model_pswt_ctrl))
+}
+```
+
+## 6.2 Multinomial treatment outcomes
+```{r}
+results_mn <- list()
+for (o in names(outcomes)) {
+  results_mn[[o]] <- fit_outcome_set(
+    dat          = els_mn,
+    outcome      = o,
+    outcome_type = outcomes[[o]],
+    treat        = "qrt_sch_strict",
+    w_col        = "w_mn",
+    controls     = controls
+  )
+}
+```
+
+```{r}
+# Print summaries (MNPS)
+cat("\n==============================\n")
+cat("OUTCOME MODELS: Multinomial Treatment (qrt_sch_strict)\n")
+cat("==============================\n")
+for (o in names(results_mn)) {
+  cat("\n--- Outcome:", o, "| N =", results_mn[[o]]$N, "---\n")
+  cat("\n1) Outcome = Treatment\n");              print(summary(results_mn[[o]]$model_unweighted))
+  cat("\n1) Outcome = Treatment + Controls\n");              print(summary(results_mn[[o]]$model_col_unweighted))
+  cat("\n2) Outcome = Treatment (PSWT)\n");       print(summary(results_mn[[o]]$model_pswt))
+  cat("\n3) Outcome = Treatment + Controls (PSWT)\n"); print(summary(results_mn[[o]]$model_pswt_ctrl))
+}
+```
+
+
+## 6.3 Continuous treatment outcomes
+```{r}
+results_cont <- list()
+for (o in names(outcomes)) {
+  results_cont[[o]] <- fit_outcome_set(
+    dat          = els_cont,
+    outcome      = o,
+    outcome_type = outcomes[[o]],
+    treat        = "sch_strict",
+    w_col        = "w_cont",
+    controls     = controls
+  )
+}
+```
+
+```{r}
+# Print summaries (Continuous)
+cat("\n==============================\n")
+cat("OUTCOME MODELS: Continuous Treatment (sch_strict)\n")
+cat("==============================\n")
+for (o in names(results_cont)) {
+  cat("\n--- Outcome:", o, "| N =", results_cont[[o]]$N, "---\n")
+  cat("\n1) Outcome = Treatment\n");              print(summary(results_cont[[o]]$model_unweighted))
+  cat("\n1) Outcome = Treatment + Controls\n");              print(summary(results_cont[[o]]$model_col_unweighted))
+  cat("\n2) Outcome = Treatment (PSWT)\n");       print(summary(results_cont[[o]]$model_pswt))
+  cat("\n3) Outcome = Treatment + Controls (PSWT)\n"); print(summary(results_cont[[o]]$model_pswt_ctrl))
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
